@@ -449,8 +449,7 @@ class KCP(object):
         '''
         update
         '''
-        if current > 4294967296:
-            current &= 0xffffffff
+        current &= 0xffffffff
         self.current = current
         if self.updated == 0:
             self.updated = 1
@@ -473,6 +472,7 @@ class KCP(object):
         '''
         check
         '''
+        current &= 0xffffffff
         ts_flush = self.ts_flush
         tm_flush = 0x7fffffff
         tm_packet = 0x7fffffff
@@ -481,10 +481,11 @@ class KCP(object):
         if self.updated == 0:
             return current
 
-        if current - ts_flush >= 10000 or current - ts_flush < -10000:
+        tm_flush = current - ts_flush
+        if tm_flush >= 10000 or tm_flush < -10000:
             ts_flush = current
 
-        if current - ts_flush >= 0:
+        if tm_flush >= 0:
             return current
 
         tm_flush = ts_flush - current
@@ -503,6 +504,7 @@ class KCP(object):
             minimal = self.interval
 
         return minimal + current
+
 
     def input(self, data):
         '''

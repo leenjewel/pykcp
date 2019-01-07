@@ -41,7 +41,10 @@ class KCPStream(object):
         '''
         Get timeout
         '''
-        return time.time() + (self.timeout / 1000.0)
+        assert self.kcp
+        now = time.time()
+        wait = self.kcp.check(int(now * 1000))
+        return wait / 1000.0
 
     def update(self):
         assert self.ioloop
