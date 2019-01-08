@@ -24,7 +24,7 @@ from tornado.iostream import StreamClosedError
 from tornado.ioloop import IOLoop
 from tornado import gen
 from pykcp.kcp import KCP, IKCP_OVERHEAD, KCPSeg
-from pykcp.stream import KCPStream
+from pykcp.stream import KCPStream, IKCP_HANDSHAKE_KEYWORD
 
 class TCPServer(tornado.tcpserver.TCPServer):
     '''
@@ -53,8 +53,9 @@ class TCPServer(tornado.tcpserver.TCPServer):
         self.kcpstream_dct[self.conv] = kcpstream
         try:
             yield stream.write('%d\n\n\n' % self.conv)
-            ok = yield stream.read_until(b'ok\n\n\n')
-            yield stream.write('ok\n\n\n')
+            handshake = yield stream.read_until(IKCP_HANDSHAKE_KEYWORD)
+            assert handshake == IKCP_HANDSHAKE_KEYWORD
+            yield stream.write(IKCP_HANDSHAKE_KEYWORD)
             kcpstream.update()
             seg = None
             head = None

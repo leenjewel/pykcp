@@ -23,7 +23,7 @@ from tornado.iostream import StreamClosedError
 from tornado.ioloop import IOLoop
 from tornado import gen
 from pykcp.kcp import KCP, IKCP_OVERHEAD, KCPSeg
-from pykcp.stream import KCPStream
+from pykcp.stream import KCPStream, IKCP_HANDSHAKE_KEYWORD
 
 class TCPClient(tornado.tcpclient.TCPClient):
     '''
@@ -44,8 +44,8 @@ class TCPClient(tornado.tcpclient.TCPClient):
             conv = yield stream.read_until(b'\n\n\n')
             self.kcpstream = KCPStream(KCP(int(conv.strip()), self.output), stream, None,\
                     ioloop=IOLoop.current(), callback=self.handle_message)
-            yield stream.write('ok\n\n\n')
-            yield stream.read_until('ok\n\n\n')
+            yield stream.write(IKCP_HANDSHAKE_KEYWORD)
+            yield stream.read_until(IKCP_HANDSHAKE_KEYWORD)
             self.handle_connect()
             self.kcpstream.update()
             seg = None

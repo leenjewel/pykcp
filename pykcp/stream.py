@@ -20,6 +20,8 @@ Stream
 
 import time
 
+IKCP_HANDSHAKE_KEYWORD = b'ok\n\n\n'
+
 class KCPStream(object):
     '''
     KCP stream
