@@ -28,13 +28,12 @@ class KCPStream(object):
     __slot__ = ('kcp', 'stream', 'address',\
             'timeout_handle', 'ioloop', 'timeout', 'message_callback')
 
-    def __init__(self, kcp, stream, address, ioloop, timeout=10, callback=None):
+    def __init__(self, kcp, stream, address, ioloop, callback=None):
         self.stream = stream
         self.address = address
         self.kcp = kcp
         self.timeout_handle = None
         self.ioloop = ioloop
-        self.timeout = timeout
         self.message_callback = callback
 
     def get_timeout(self):
@@ -47,6 +46,9 @@ class KCPStream(object):
         return wait / 1000.0
 
     def update(self):
+        '''
+        Update
+        '''
         assert self.ioloop
         assert self.kcp
         self.kcp.update(int(time.time() * 1000))
@@ -64,6 +66,9 @@ class KCPStream(object):
         self.kcp.send(data)
 
     def close(self):
+        '''
+        Close
+        '''
         if self.ioloop and self.timeout_handle:
             self.ioloop.remove_timeout(self.timeout_handle)
 

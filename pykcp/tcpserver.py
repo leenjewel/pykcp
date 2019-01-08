@@ -19,7 +19,6 @@
 TCP Server
 '''
 
-import time
 import tornado.tcpserver
 from tornado.iostream import StreamClosedError
 from tornado.ioloop import IOLoop
@@ -32,12 +31,11 @@ class TCPServer(tornado.tcpserver.TCPServer):
     TCP Server
     '''
 
-    def __init__(self, timeout=10, ssl_options=None, max_buffer_size=None, read_chunk_size=None):
+    def __init__(self, ssl_options=None, max_buffer_size=None, read_chunk_size=None):
         tornado.tcpserver.TCPServer.__init__(self,\
                 ssl_options=ssl_options,\
                 max_buffer_size=max_buffer_size,\
                 read_chunk_size=read_chunk_size)
-        self.timeout = timeout
         self.conv = 0
         self.kcpstream_dct = {}
 
@@ -51,7 +49,7 @@ class TCPServer(tornado.tcpserver.TCPServer):
     def handle_stream(self, stream, address):
         self.conv += 1
         kcpstream = KCPStream(KCP(self.conv, self.output), stream, address,\
-                timeout=self.timeout, ioloop=IOLoop.current(), callback=self.handle_message)
+                ioloop=IOLoop.current(), callback=self.handle_message)
         self.kcpstream_dct[self.conv] = kcpstream
         try:
             yield stream.write('%d\n\n\n' % self.conv)

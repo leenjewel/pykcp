@@ -18,7 +18,6 @@
 TCP Client
 '''
 
-import time
 import tornado.tcpclient
 from tornado.iostream import StreamClosedError
 from tornado.ioloop import IOLoop
@@ -31,18 +30,20 @@ class TCPClient(tornado.tcpclient.TCPClient):
     TCP Client
     '''
 
-    def __init__(self, timeout=10, resolver=None):
+    def __init__(self, resolver=None):
         tornado.tcpclient.TCPClient.__init__(self, resolver=resolver)
         self.kcpstream = None
-        self.timeout = timeout
 
     @gen.coroutine
     def kcp_connect(self, host, port):
+        '''
+        Connect
+        '''
         try:
             stream = yield self.connect(host, port)
             conv = yield stream.read_until(b'\n\n\n')
             self.kcpstream = KCPStream(KCP(int(conv.strip()), self.output), stream, None,\
-                    timeout=self.timeout, ioloop=IOLoop.current(), callback=self.handle_message)
+                    ioloop=IOLoop.current(), callback=self.handle_message)
             yield stream.write('ok\n\n\n')
             yield stream.read_until('ok\n\n\n')
             self.handle_connect()
