@@ -181,11 +181,11 @@ class KCP(object):
         self.current = 0
         self.interval = IKCP_INTERVAL
         self.ts_flush = IKCP_INTERVAL
-        self.nodelay = 0
-        self.updated = 0
+        self.nodelay = False
+        self.updated = False
         self.ssthresh = IKCP_THRESH_INIT
         self.fastresend = 0
-        self.nocwnd = 0
+        self.nocwnd = False
         self.xmit = 0
         self.dead_link = IKCP_DEADLINK
         assert callable(output)
@@ -451,8 +451,8 @@ class KCP(object):
         '''
         current &= 0xffffffff
         self.current = current
-        if self.updated == 0:
-            self.updated = 1
+        if not self.updated:
+            self.updated = True
             self.ts_flush = self.current
 
         slap = self.current - self.ts_flush
@@ -468,17 +468,17 @@ class KCP(object):
             self.flush()
 
 
-    def check(self, current):
+    def check(self, now):
         '''
         check
         '''
-        current &= 0xffffffff
+        current = now & 0xffffffff
         ts_flush = self.ts_flush
         tm_flush = 0x7fffffff
         tm_packet = 0x7fffffff
         minimal = 0
 
-        if self.updated == 0:
+        if not self.updated:
             return current
 
         tm_flush = current - ts_flush
@@ -503,7 +503,7 @@ class KCP(object):
         if minimal >= self.interval:
             minimal = self.interval
 
-        return minimal + current
+        return minimal + now
 
 
     def input(self, data):
@@ -621,7 +621,7 @@ class KCP(object):
         current = self.current
         change = False
         lost = False
-        if self.updated == 0:
+        if not self.updated:
             return
 
         seg = KCPSeg(self.conv)
@@ -671,7 +671,7 @@ class KCP(object):
         self.probe = 0
 
         cwnd = min(self.snd_wnd, self.rmt_wnd)
-        if self.nocwnd == 0:
+        if not self.nocwnd:
             cwnd = min(self.cwnd, cwnd)
 
         while self.snd_nxt - (self.snd_una + cwnd) < 0:
@@ -699,7 +699,7 @@ class KCP(object):
             resent = self.fastresend
 
         rtomin = 0
-        if self.nodelay == 0:
+        if not self.nodelay:
             rtomin = self.rx_rto >> 3
 
         for segment in self.snd_buf:
@@ -713,7 +713,7 @@ class KCP(object):
                 needsend = True
                 segment.xmit += 1
                 self.xmit += 1
-                if self.nodelay == 0:
+                if not self.nodelay:
                     segment.rto += self.rx_rto
                 else:
                     segment.rto += self.rx_rto / 2
@@ -798,16 +798,17 @@ class KCP(object):
         return self.nsnd_buf + self.nsnd_que
 
 
-    def set_nodelay(self, nodelay=0, interval=100, resend=0, normal_control=0):
+    def set_nodelay(self, nodelay=None, interval=100, resend=0, normal_control=False):
         '''
-        nodelay: 0=disable; 1=enable; default=0
+        nodelay: False=disable; True=enable; default=False
         interval: internal update timer interval in millisec, default is 100ms
         resend: 0=disable fast resend; 1=enable fast resend; default=0
-        nc: 0=normal congestion control; 1=disable congestion control; default=0
+        normal_control: False=normal congestion control;\
+                True=disable congestion control; default=False
         '''
-        if nodelay >= 0:
+        if nodelay is not None:
             self.nodelay = nodelay
-            if nodelay > 0:
+            if nodelay:
                 self.rx_minrto = IKCP_RTO_NDL
             else:
                 self.rx_minrto = IKCP_RTO_MIN
@@ -818,5 +819,5 @@ class KCP(object):
         if resend >= 0:
             self.fastresend = resend
 
-        if normal_control >= 0:
+        if normal_control is not None:
             self.nocwnd = normal_control
