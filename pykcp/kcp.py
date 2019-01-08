@@ -14,24 +14,85 @@
 # limitations under the License.
 
 '''
-KCP
+KCP PROTOCOL SPECIFICATION
+
+https://github.com/skywind3000/kcp/blob/master/protocol.txt
+
+1. Packet (aka. segment) Structure
+
+KCP has only one kind of segment: both the data and control messages are
+encoded into the same structure and share the same header.
+
+The KCP packet (aka. segment) structure is as following:
+
+0               4   5   6       8 (BYTE)
++---------------+---+---+-------+
+|     conv      |cmd|frg|  wnd  |
++---------------+---+---+-------+   8
+|     ts        |     sn        |
++---------------+---------------+  16
+|     una       |     len       |
++---------------+---------------+  24
+|                               |
+|        DATA (optional)        |
+|                               |
++-------------------------------+
+
+
+- conv: conversation id (32 bits integer)
+
+The conversation id is used to identify each connection, which will not change
+during the connection life-time.
+
+It is represented by a 32 bits integer which is given at the moment the KCP
+control block (aka. struct ikcpcb, or kcp object) has been created. Each
+packet sent out will carry the conversation id in the first 4 bytes and a
+packet from remote endpoint will not be accepted if it has a different
+conversation id.
+
+The value can be any random number, but in practice, both side between a
+connection will have many KCP objects (or control block) storing in the
+containers like a map or an array. A index is used as the key to look up one
+KCP object from the container.
+
+So, the higher 16 bits of conversation id can be used as caller's index while
+the lower 16 bits can be used as callee's index. KCP will not handle
+handshake, and the index in both side can be decided and exchanged after
+connection establish.
+
+When you receive and accept a remote packet, the local index can be extracted
+from the conversation id and the kcp object which is in charge of this
+connection can be find out from your map or array.
+
+
+- cmd: command
+
+- frg: fragment count
+
+- wnd: window size
+
+- ts: timestamp
+
+- sn: serial number
+
+- una: un-acknowledged serial number
 '''
 
 import struct
 from collections import deque
 
-IKCP_RTO_NDL = 30  # no delay min rto
-IKCP_RTO_MIN = 100 # normal min rto
+IKCP_RTO_NDL = 30          # no delay min rto
+IKCP_RTO_MIN = 100         # normal min rto
 IKCP_RTO_DEF = 200
 IKCP_RTO_MAX = 60000
-IKCP_CMD_PUSH = 81# cmd: push data
-IKCP_CMD_ACK = 82# cmd: ack
-IKCP_CMD_WASK = 83# cmd: window probe (ask)
-IKCP_CMD_WINS = 84# cmd: window size (tell)
-IKCP_ASK_SEND = 1# need to send IKCP_CMD_WASK
-IKCP_ASK_TELL = 2# need to send IKCP_CMD_WINS
+IKCP_CMD_PUSH = 81         # cmd: push data
+IKCP_CMD_ACK = 82          # cmd: ack
+IKCP_CMD_WASK = 83         # cmd: window probe (ask)
+IKCP_CMD_WINS = 84         # cmd: window size (tell)
+IKCP_ASK_SEND = 1          # need to send IKCP_CMD_WASK
+IKCP_ASK_TELL = 2          # need to send IKCP_CMD_WINS
 IKCP_WND_SND = 32
-IKCP_WND_RCV = 128# must >= max fragment size
+IKCP_WND_RCV = 128         # must >= max fragment size
 IKCP_MTU_DEF = 1400
 IKCP_ACK_FAST = 3
 IKCP_INTERVAL = 100
@@ -39,27 +100,19 @@ IKCP_OVERHEAD = 24
 IKCP_DEADLINK = 20
 IKCP_THRESH_INIT = 2
 IKCP_THRESH_MIN = 2
-IKCP_PROBE_INIT = 7000# 7 secs to probe window size
-IKCP_PROBE_LIMIT = 120000# up to 120 secs to probe window
+IKCP_PROBE_INIT = 7000     # 7 secs to probe window size
+IKCP_PROBE_LIMIT = 120000  # up to 120 secs to probe window
 
-
-def is_big_endian():
-    '''
-    Check is big endian system or not
-    '''
-    pack = struct.pack('i', 0x12345678)
-    return hex(ord(pack[0])) == '0x12'
-
-IWORDS_BIG_ENDIAN = is_big_endian()
-
+IKCP_PACKET_HEAD_FORMAT = '<IBBHIIII'
 
 class KCPSeg(object):
     '''
-    KCP seg
+    KCP segment
     '''
 
     # pylint: disable=too-many-instance-attributes
     # pylint: disable=too-few-public-methods
+    # pylint: disable=invalid-name
 
     __slots__ = (
         'conv', 'cmd', 'frg', 'wnd', 'ts', 'sn',
@@ -86,19 +139,19 @@ class KCPSeg(object):
 
     def encode(self):
         '''
-        Encode
+        Encode KCP packet head
         '''
-        return struct.pack('<IBBHIIII', self.conv, self.cmd, self.frg,\
+        return struct.pack(IKCP_PACKET_HEAD_FORMAT, self.conv, self.cmd, self.frg,\
                 self.wnd, self.ts, self.sn, self.una, self.len)
 
     @classmethod
     def decode(cls, data):
         '''
-        Decode
+        Decode KCP packet head
         '''
         assert len(data) >= IKCP_OVERHEAD
         conv, cmd, frg, wnd, ts, sn, una, length = \
-                struct.unpack('IBBHIIII', data[:IKCP_OVERHEAD])
+                struct.unpack(IKCP_PACKET_HEAD_FORMAT, data[:IKCP_OVERHEAD])
         seg = cls(conv)
         seg.cmd = cmd
         seg.frg = frg
@@ -118,6 +171,7 @@ class KCP(object):
 
     # pylint: disable=too-many-instance-attributes
     # pylint: disable=too-many-public-methods
+    # pylint: disable=invalid-name
 
     __slots__ = (
         'conv', 'mtu', 'mss', 'state',
@@ -161,7 +215,7 @@ class KCP(object):
         self.probe = 0
         self.mtu = IKCP_MTU_DEF
         self.mss = self.mtu - IKCP_OVERHEAD
-        self.stream = 0
+        self.stream = False
         self.snd_queue = deque()
         self.rcv_queue = deque()
         self.snd_buf = deque()
@@ -229,6 +283,7 @@ class KCP(object):
 
         recover = self.nrcv_que >= self.rcv_wnd
 
+        # merge fragment
         length = 0
         fragment = 0
         while self.rcv_queue:
@@ -243,6 +298,7 @@ class KCP(object):
 
         assert length == peek_size
 
+        # move available data from rcv_buf to rcv_queue
         while self.rcv_buf:
             seg = self.rcv_buf.popleft()
             if seg.sn == self.rcv_nxt and self.nrcv_que < self.rcv_wnd:
@@ -267,7 +323,9 @@ class KCP(object):
         '''
         assert self.mss > 0
         length = len(data)
-        if self.stream != 0:
+
+        # append to previous segment in streaming mode if possible
+        if self.stream:
             if self.snd_queue:
                 seg = self.snd_queue[-1]
                 if seg.len < int(self.mss):
@@ -294,15 +352,16 @@ class KCP(object):
             count = 1
 
         for i in range(count):
-            new_seg = KCPSeg(0)
+            new_seg = KCPSeg(self.conv)
             new_seg.len = length
             if length > int(self.mss):
                 new_seg.len = int(self.mss)
             new_seg.data = data[:new_seg.len]
             new_seg.frg = 0
-            if self.stream == 0:
+            if not self.stream:
                 new_seg.frg = count - i - 1
             self.snd_queue.append(new_seg)
+            self.nsnd_que += 1
             length -= new_seg.len
 
         return 0
@@ -363,6 +422,7 @@ class KCP(object):
         while self.snd_buf:
             seg = self.snd_buf.popleft()
             if una - seg.sn > 0:
+                del seg
                 self.nsnd_buf -= 1
             else:
                 self.snd_buf.appendleft(seg)
@@ -381,21 +441,6 @@ class KCP(object):
                 break
             elif sn != seg.sn:
                 seg.fastack += 1
-
-
-    def ack_push(self, sn, ts):
-        '''
-        ACK push
-        '''
-        self.acklist.append((sn,ts))
-
-
-    def ack_get(self, idx):
-        '''
-        ACK get
-        '''
-        sn, ts = self.acklist[idx]
-        return sn, ts
 
 
     def parse_data(self, newseg):
@@ -476,34 +521,27 @@ class KCP(object):
         ts_flush = self.ts_flush
         tm_flush = 0x7fffffff
         tm_packet = 0x7fffffff
-        minimal = 0
 
         if not self.updated:
-            return current
+            return now
 
         tm_flush = current - ts_flush
         if tm_flush >= 10000 or tm_flush < -10000:
             ts_flush = current
 
         if tm_flush >= 0:
-            return current
+            return now
 
         tm_flush = ts_flush - current
 
         for seg in self.snd_buf:
             diff = seg.resendts - current
             if diff <= 0:
-                return current
+                return now
             if diff < tm_packet:
                 tm_packet = diff
 
-        minimal = tm_flush
-        if tm_packet < tm_flush:
-            minimal = tm_packet
-        if minimal >= self.interval:
-            minimal = self.interval
-
-        return minimal + now
+        return now + min(tm_flush, tm_packet, self.interval)
 
 
     def input(self, data):
@@ -516,7 +554,7 @@ class KCP(object):
 
         una = self.snd_una
         maxack = 0
-        flag = 0
+        flag = False
         size = len(data)
 
         if not data or size < IKCP_OVERHEAD:
@@ -526,62 +564,53 @@ class KCP(object):
             if size < IKCP_OVERHEAD:
                 break
 
-            conv, cmd, frg, wnd, ts, sn, una, length = \
-                    struct.unpack('IBBHIIII', data[:IKCP_OVERHEAD])
+            seg = KCPSeg.decode(data)
 
-            if conv != self.conv:
+            if seg.conv != self.conv:
                 return -1
 
             size -= IKCP_OVERHEAD
-            if size < length or length < 0:
+            if size < seg.len or seg.len < 0:
                 return -2
 
-            if cmd not in (IKCP_CMD_PUSH, IKCP_CMD_ACK, IKCP_CMD_WASK, IKCP_CMD_WINS):
+            if seg.cmd not in (IKCP_CMD_PUSH, IKCP_CMD_ACK, IKCP_CMD_WASK, IKCP_CMD_WINS):
                 return -3
 
-            self.rmt_wnd = wnd
-            self.parse_una(una)
+            self.rmt_wnd = seg.wnd
+            self.parse_una(seg.una)
             self.shrink_buf()
 
-            if cmd == IKCP_CMD_ACK:
-                if self.current - ts >= 0:
-                    self.update_ack(self.current - ts)
-                self.parse_ack(sn)
+            if seg.cmd == IKCP_CMD_ACK:
+                if self.current - seg.ts >= 0:
+                    self.update_ack(self.current - seg.ts)
+                self.parse_ack(seg.sn)
                 self.shrink_buf()
-                if flag == 0:
-                    flag = 1
-                    maxack = sn
-                elif sn - maxack > 0:
-                    maxack = sn
+                if not flag:
+                    flag = True
+                    maxack = seg.sn
+                elif seg.sn - maxack > 0:
+                    maxack = seg.sn
 
-            elif cmd == IKCP_CMD_PUSH:
-                if sn - (self.rcv_nxt + self.rcv_wnd) < 0:
-                    self.ack_push(sn, ts)
-                    if sn - self.rcv_nxt >= 0:
-                        seg = KCPSeg(conv)
-                        seg.len = length
-                        seg.cmd = cmd
-                        seg.frg = frg
-                        seg.wnd = wnd
-                        seg.ts = ts
-                        seg.sn = sn
-                        seg.una = una
-                        seg.data = data[IKCP_OVERHEAD:IKCP_OVERHEAD+length]
+            elif seg.cmd == IKCP_CMD_PUSH:
+                if seg.sn - (self.rcv_nxt + self.rcv_wnd) < 0:
+                    self.acklist.append((seg.sn, seg.ts))
+                    if seg.sn - self.rcv_nxt >= 0:
+                        seg.data = data[IKCP_OVERHEAD:IKCP_OVERHEAD+seg.len]
                         self.parse_data(seg)
 
-            elif cmd == IKCP_CMD_WASK:
+            elif seg.cmd == IKCP_CMD_WASK:
                 self.probe |= IKCP_ASK_TELL
 
-            elif cmd == IKCP_CMD_WINS:
+            elif seg.cmd == IKCP_CMD_WINS:
                 pass
 
             else:
                 return -3
 
-            data = data[IKCP_OVERHEAD+length:]
-            size -= length
+            data = data[IKCP_OVERHEAD+seg.len:]
+            size -= seg.len
 
-        if flag != 0:
+        if flag:
             self.parse_fastack(maxack)
 
         if self.snd_una - una > 0:
@@ -650,11 +679,8 @@ class KCP(object):
                 self.ts_probe = self.current + self.probe_wait
             else:
                 if self.current - self.ts_probe >= 0:
-                    if self.probe_wait < IKCP_PROBE_INIT:
-                        self.probe_wait = IKCP_PROBE_INIT
-                    self.probe_wait += self.probe_wait / 2
-                    if self.probe_wait > IKCP_PROBE_LIMIT:
-                        self.probe_wait = IKCP_PROBE_LIMIT
+                    self.probe_wait = min(self.probe_wait + (max(self.probe_wait,\
+                            IKCP_PROBE_INIT) / 2), IKCP_PROBE_LIMIT)
                     self.ts_probe = self.current + self.probe_wait
                     self.probe |= IKCP_ASK_SEND
         else:
