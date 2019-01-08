@@ -22,11 +22,11 @@ from tornado.ioloop import IOLoop
 class TestClient(TCPClient):
 
     def handle_connect(self):
-        self.kcpstream.send('hello kcp')
+        self.kcpstream.send(b'hello kcp')
 
     def handle_message(self, kcpstream, msg):
         print('RECV: %s' % msg)
-        kcpstream.send('++++ %s' %msg)
+        kcpstream.send(b'++++ %s' %msg)
 
 if __name__ == '__main__':
     client = TestClient()

@@ -273,7 +273,7 @@ class KCP(object):
         '''
         recv
         '''
-        data = ''
+        data = b''
         if not self.rcv_queue:
             return None
 
@@ -322,6 +322,8 @@ class KCP(object):
         send
         '''
         assert self.mss > 0
+        assert isinstance(data, bytes), 'Send must be bytes'
+
         length = len(data)
 
         # append to previous segment in streaming mode if possible
@@ -374,11 +376,11 @@ class KCP(object):
         rto = 0
         if self.rx_srtt == 0:
             self.rx_srtt = rtt
-            self.rx_rttval = rtt / 2
+            self.rx_rttval = int(rtt / 2)
         else:
             delta = abs(rtt - self.rx_srtt)
-            self.rx_rttval = (3 * self.rx_rttval + delta) / 4
-            self.rx_srtt = (7 * self.rx_srtt + rtt) / 8
+            self.rx_rttval = int((3 * self.rx_rttval + delta) / 4)
+            self.rx_srtt = int((7 * self.rx_srtt + rtt) / 8)
             if self.rx_srtt < 1:
                 self.rx_srtt = 1
 
@@ -552,6 +554,8 @@ class KCP(object):
         # pylint: disable=too-many-branches
         # pylint: disable=too-many-statements
 
+        assert isinstance(data, bytes), 'Input must be bytes'
+
         una = self.snd_una
         maxack = 0
         flag = False
@@ -622,7 +626,7 @@ class KCP(object):
                 else:
                     if self.incr < mss:
                         self.incr = mss
-                    self.incr += (mss * mss) / self.incr + (mss / 16)
+                    self.incr += int(mss * mss) / self.incr + int(mss / 16)
                     if (self.cwnd + 1) * mss <= self.incr:
                         self.cwnd += 1
                 if self.cwnd > self.rmt_wnd:
@@ -662,14 +666,14 @@ class KCP(object):
         seg.sn = 0
         seg.ts = 0
 
-        data = ''
+        data = b''
         for sn, ts in self.acklist:
             seg.sn = sn
             seg.ts = ts
             data += seg.encode()
             if len(data) + IKCP_OVERHEAD > self.mtu:
                 self.output(data)
-                data = ''
+                data = b''
 
         self.acklist = []
 
@@ -679,7 +683,7 @@ class KCP(object):
                 self.ts_probe = self.current + self.probe_wait
             else:
                 if self.current - self.ts_probe >= 0:
-                    self.probe_wait = min(self.probe_wait + (max(self.probe_wait,\
+                    self.probe_wait = min(self.probe_wait + int(max(self.probe_wait,\
                             IKCP_PROBE_INIT) / 2), IKCP_PROBE_LIMIT)
                     self.ts_probe = self.current + self.probe_wait
                     self.probe |= IKCP_ASK_SEND
@@ -692,7 +696,7 @@ class KCP(object):
             data += seg.encode()
             if len(data) + IKCP_OVERHEAD > self.mtu:
                 self.output(data)
-                data = ''
+                data = b''
 
         self.probe = 0
 
@@ -742,7 +746,7 @@ class KCP(object):
                 if not self.nodelay:
                     segment.rto += self.rx_rto
                 else:
-                    segment.rto += self.rx_rto / 2
+                    segment.rto += int(self.rx_rto / 2)
                 segment.resendts = current + segment.rto
                 lost = True
             elif segment.fastack >= resent:
@@ -758,7 +762,7 @@ class KCP(object):
                 segment.una = self.rcv_nxt
                 if len(data) + segment.len + IKCP_OVERHEAD > self.mtu:
                     self.output(data)
-                    data = ''
+                    data = b''
 
                 data += segment.encode()
                 data += segment.data
@@ -771,14 +775,14 @@ class KCP(object):
 
         if change:
             inflight = self.snd_nxt - self.snd_una
-            self.ssthresh = inflight / 2
+            self.ssthresh = int(inflight / 2)
             if self.ssthresh < IKCP_THRESH_MIN:
                 self.ssthresh = IKCP_THRESH_MIN
             self.cwnd = self.ssthresh + resent
             self.incr = self.cwnd * self.mss
 
         if lost:
-            self.ssthresh = cwnd / 2
+            self.ssthresh = int(cwnd / 2)
             if self.ssthresh < IKCP_THRESH_MIN:
                 self.ssthresh = IKCP_THRESH_MIN
             self.cwnd = 1

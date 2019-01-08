@@ -23,7 +23,7 @@ class TestServer(TCPServer):
 
     def handle_message(self, kcpstream, msg):
         print('RECV: %s' % msg)
-        kcpstream.send('>>>> %s' %msg)
+        kcpstream.send(b'>>>> %s' %msg)
 
 if __name__ == '__main__':
     server = TestServer()
