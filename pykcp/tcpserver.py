@@ -52,7 +52,7 @@ class TCPServer(tornado.tcpserver.TCPServer):
                 ioloop=IOLoop.current(), callback=self.handle_message)
         self.kcpstream_dct[self.conv] = kcpstream
         try:
-            yield stream.write('%d\n\n\n' % self.conv)
+            yield stream.write(b'%d\n\n\n' % self.conv)
             handshake = yield stream.read_until(IKCP_HANDSHAKE_KEYWORD)
             assert handshake == IKCP_HANDSHAKE_KEYWORD
             yield stream.write(IKCP_HANDSHAKE_KEYWORD)
@@ -77,17 +77,11 @@ class TCPServer(tornado.tcpserver.TCPServer):
                 del self.kcpstream_dct[kcpstream.kcp.conv]
 
 
+    @gen.coroutine
     def output(self, kcp, data):
         '''
         Output
         '''
         kcpstream = self.kcpstream_dct.get(kcp.conv)
         if kcpstream:
-            kcpstream.stream.write(data, self.write_callback)
-
-
-    def write_callback(self, *args, **kw_args):
-        '''
-        Write callback
-        '''
-        pass
+            yield kcpstream.stream.write(data)

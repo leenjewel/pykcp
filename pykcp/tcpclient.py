@@ -78,16 +78,11 @@ class TCPClient(tornado.tcpclient.TCPClient):
         '''
         raise NotImplementedError()
 
+    @gen.coroutine
     def output(self, kcp, data):
         '''
         Output
         '''
         assert self.kcpstream
         assert self.kcpstream.stream
-        self.kcpstream.stream.write(data, callback=self.write_callback)
-
-    def write_callback(self, *args, **kw_args):
-        '''
-        Write callback
-        '''
-        pass
+        yield self.kcpstream.stream.write(data)
